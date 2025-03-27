@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Title will be set by JavaScript -->
+    <title>Killer Sudoku Helper</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            transition: direction 0.3s ease; /* Smooth transition for direction change */
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+        }
+        label {
+            display: block;
+            margin-top: 12px;
+            font-weight: bold;
+        }
+        input[type="number"], input[type="text"], select {
+            width: 95%;
+            padding: 9px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box; /* Include padding in width */
+        }
+        button {
+            padding: 10px 18px;
+            margin-top: 20px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        button:hover { background-color: #0056b3; }
+        #results {
+            margin-top: 25px;
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap; /* Allows line breaks */
+            border: 1px solid #e0e0e0;
+            min-height: 50px;
+        }
+        .error { color: red; font-weight: bold; }
+        .lang-selector { margin-bottom: 20px; }
+
+        /* RTL specific styles */
+        body[dir="rtl"] { text-align: right; }
+        body[dir="rtl"] label { text-align: right; }
+        /* Align text in inputs correctly for RTL */
+        body[dir="rtl"] input[type="number"],
+        body[dir="rtl"] input[type="text"] { text-align: right; }
+         /* Ensure dropdown arrow is on the left for RTL */
+        body[dir="rtl"] select { background-position: left .75rem center; padding-left: .75rem; padding-right: 2.25rem;}
+
+    </style>
+</head>
+<body dir="ltr"> <!-- Default direction is Left-to-Right -->
+
+    <div class="container">
+
+        <div class="lang-selector">
+            <label for="languageSelector" data-translate-key="languageLabel">Language:</label>
+            <select id="languageSelector" onchange="changeLanguage()">
+                <option value="en">English</option>
+                <option value="ar">العربية (Arabic)</option>
+                <option value="fr">Français (French)</option>
+            </select>
+        </div>
+
+        <h1 data-translate-key="mainHeading">Killer Sudoku Combination Finder</h1>
+
+        <div>
+            <label for="cageSum" data-translate-key="cageSumLabel">Cage Sum:</label>
+            <input type="number" id="cageSum" name="cageSum" min="1" required>
+        </div>
+
+        <div>
+            <label for="numCells" data-translate-key="numCellsLabel">Number of Cells in Cage:</label>
+            <input type="number" id="numCells" name="numCells" min="1" max="9" required>
+        </div>
+
+        <div>
+            <label for="excludedDigits" data-translate-key="excludedDigitsLabel">Excluded Digits (comma-separated):</label>
+            <input type="text" id="excludedDigits" name="excludedDigits" data-translate-placeholder="excludedDigitsPlaceholder" placeholder="e.g., 1,8,9">
+        </div>
+
+        <button onclick="findCombinations()" data-translate-key="findButton">Find Possible Combinations</button>
+
+        <div id="results" data-translate-key="resultsInitial">
+            Results will appear here...
+        </div>
+    </div>
+
+    <script>
+        const allDigits = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let currentLanguage = 'en'; // Default language
+
+        // --- Translation Strings ---
+        const translations = {
+            // General UI
+            pageTitle: { en: 'Killer Sudoku Combination Finder', ar: 'مكتشف توافيق سودوكو القاتل', fr: 'Chercheur de Combinaisons Killer Sudoku' },
+            mainHeading: { en: 'Killer Sudoku Combination Finder', ar: 'مكتشف توافيق سودوكو القاتل', fr: 'Chercheur de Combinaisons Killer Sudoku' },
+            languageLabel: { en: 'Language:', ar: 'اللغة:', fr: 'Langue :' },
+            // Input Labels & Placeholders
+            cageSumLabel: { en: 'Cage Sum:', ar: 'مجموع القفص:', fr: 'Somme de la Cage :' },
+            numCellsLabel: { en: 'Number of Cells in Cage:', ar: 'عدد الخلايا في القفص:', fr: 'Nombre de Cellules :' },
+            excludedDigitsLabel: { en: 'Excluded Digits (comma-separated):', ar: 'الأرقام المستبعدة (مفصولة بفواصل):', fr: 'Chiffres Exclus (séparés par virgule) :' },
+            excludedDigitsPlaceholder: { en: 'e.g., 1,8,9', ar: 'مثال: 1، 8، 9', fr: 'ex : 1,8,9' },
+            // Button
+            findButton: { en: 'Find Possible Combinations', ar: 'ابحث عن التوافيق الممكنة', fr: 'Trouver les Combinaisons' },
+            // Results Area & Status/Error Messages
+            resultsInitial: { en: 'Results will appear here...', ar: 'ستظهر النتائج هنا...', fr: 'Les résultats apparaîtront ici...' },
+            calculating: { en: 'Calculating...', ar: 'جارٍ الحساب...', fr: 'Calcul en cours...' },
+            errorInvalidInput: { en: 'Error: Please enter valid numbers for Sum and Number of Cells.', ar: 'خطأ: يرجى إدخال أرقام صالحة للمجموع وعدد الخلايا.', fr: 'Erreur : Veuillez entrer des nombres valides pour la Somme et le Nombre de Cellules.' },
+            // Note: {digit} is a placeholder that will be replaced
+            errorInvalidExcluded: { en: 'Error: Invalid excluded digit found: "{digit}". Please use comma-separated digits 1-9.', ar: 'خطأ: تم العثور على رقم مستبعد غير صالح: "{digit}". يرجى استخدام أرقام من 1-9 مفصولة بفواصل.', fr: 'Erreur : Chiffre exclu invalide trouvé : "{digit}". Veuillez utiliser des chiffres de 1 à 9 séparés par des virgules.' },
+            // Note: {available} and {needed} are placeholders
+            errorNotEnoughDigits: { en: 'Not enough available digits ({available}) to form a combination of {needed} cells.', ar: 'لا توجد أرقام متاحة كافية ({available}) لتكوين تركيبة من {needed} خلايا.', fr: 'Pas assez de chiffres disponibles ({available}) pour former une combinaison de {needed} cellules.' },
+            // Note: {count} is a placeholder
+            resultsFound: { en: 'Found {count} combination(s):\n\n', ar: 'تم العثور على {count} توافيق:\n\n', fr: 'Trouvé {count} combinaison(s) :\n\n' },
+            resultsNone: { en: 'No valid combinations found for the given criteria.', ar: 'لم يتم العثور على توافيق صالحة للمعايير المحددة.', fr: 'Aucune combinaison valide trouvée pour les critères donnés.' }
+        };
+
+        // --- Language and UI Update Function ---
+        function updateUI(lang) {
+            currentLanguage = lang;
+            document.documentElement.lang = lang; // Set HTML lang attribute
+            document.body.dir = (lang === 'ar') ? 'rtl' : 'ltr'; // Set page direction
+
+            // Update title
+            document.title = translations.pageTitle[lang];
+
+            // Update elements with data-translate-key attribute
+            document.querySelectorAll('[data-translate-key]').forEach(element => {
+                const key = element.getAttribute('data-translate-key');
+                if (translations[key] && translations[key][lang]) {
+                    // Handle specific element types if needed, default to innerText
+                    if (element.tagName === 'INPUT' && element.type === 'button' || element.tagName === 'BUTTON') {
+                         element.textContent = translations[key][lang]; // Use textContent for buttons
+                    } else if (element.id === 'results' && element.textContent.trim() === element.dataset.previousText?.trim()){
+                        // Only update initial result text if it hasn't changed to calculation/results yet
+                        element.textContent = translations[key][lang];
+                        element.dataset.previousText = translations[key][lang]; // Store initial text
+                    }
+                     else if (element.tagName !== 'INPUT' && element.id !== 'results') {
+                         element.textContent = translations[key][lang];
+                    }
+                    // Store initial result text for comparison later
+                    if (key === 'resultsInitial') {
+                        element.dataset.previousText = translations[key][lang];
+                    }
+                }
+            });
+
+             // Update elements with data-translate-placeholder attribute
+            document.querySelectorAll('[data-translate-placeholder]').forEach(element => {
+                const key = element.getAttribute('data-translate-placeholder');
+                if (translations[key] && translations[key][lang]) {
+                    element.placeholder = translations[key][lang];
+                }
+            });
+
+             // Special handling for the initial results text if it's currently displayed
+             const resultsDiv = document.getElementById('results');
+             const initialTextKey = resultsDiv.getAttribute('data-translate-key');
+             if (initialTextKey === 'resultsInitial' && resultsDiv.textContent.trim() === resultsDiv.dataset.previousText?.trim()) {
+                 resultsDiv.textContent = translations.resultsInitial[lang];
+                 resultsDiv.dataset.previousText = resultsDiv.textContent; // Update stored initial text
+             }
+        }
+
+
+        // --- Language Change Handler ---
+        function changeLanguage() {
+            const selector = document.getElementById('languageSelector');
+            const selectedLang = selector.value;
+            updateUI(selectedLang);
+        }
+
+        // --- Core Combination Logic (Modified for Translation) ---
+        function findCombinations() {
+            const resultsDiv = document.getElementById('results');
+            // Use translated 'calculating' message
+            resultsDiv.innerHTML = translations.calculating[currentLanguage];
+            resultsDiv.classList.remove('error');
+
+            // --- Get Inputs ---
+            const targetSum = parseInt(document.getElementById('cageSum').value);
+            const numCells = parseInt(document.getElementById('numCells').value);
+            const excludedInput = document.getElementById('excludedDigits').value.trim();
+
+            // --- Input Validation (Using translated error messages) ---
+            if (isNaN(targetSum) || isNaN(numCells) || targetSum < 1 || numCells < 1 || numCells > 9) {
+                resultsDiv.innerHTML = translations.errorInvalidInput[currentLanguage];
+                resultsDiv.classList.add('error');
+                return;
+            }
+
+            let excludedSet = new Set();
+            if (excludedInput) {
+                const excludedArray = excludedInput.split(',').map(s => s.trim()).filter(s => s !== '');
+                for (const item of excludedArray) {
+                    const digit = parseInt(item);
+                    if (!isNaN(digit) && digit >= 1 && digit <= 9) {
+                        excludedSet.add(digit);
+                    } else {
+                        // Use translated error message with placeholder replacement
+                        resultsDiv.innerHTML = translations.errorInvalidExcluded[currentLanguage].replace('{digit}', item);
+                        resultsDiv.classList.add('error');
+                        return;
+                    }
+                }
+            }
+
+            // --- Filter Available Digits ---
+            const availableDigits = allDigits.filter(digit => !excludedSet.has(digit));
+
+            if (availableDigits.length < numCells) {
+                 // Use translated error message with placeholders
+                 resultsDiv.innerHTML = translations.errorNotEnoughDigits[currentLanguage]
+                                        .replace('{available}', availableDigits.length)
+                                        .replace('{needed}', numCells);
+                 return;
+            }
+
+            // --- Recursive Combination Generation (No changes needed here) ---
+            let validCombinations = [];
+            function generate(startIndex, currentSum, currentCombination) {
+                if (currentCombination.length === numCells) {
+                    if (currentSum === targetSum) {
+                        validCombinations.push([...currentCombination]);
+                    }
+                    return;
+                }
+                if (currentSum >= targetSum || startIndex >= availableDigits.length || availableDigits.length - startIndex < numCells - currentCombination.length) {
+                    return;
+                }
+
+                 // Optimizations (same as before)
+                 const remainingCells = numCells - currentCombination.length;
+                 let minPossibleSum = currentSum;
+                 for(let i = 0; i < remainingCells; ++i) {
+                     if (startIndex + i < availableDigits.length) minPossibleSum += availableDigits[startIndex + i];
+                     else { minPossibleSum = Infinity; break; }
+                 }
+                 if (minPossibleSum > targetSum) return;
+
+                 let maxPossibleSum = currentSum;
+                 for(let i = 0; i < remainingCells; ++i) {
+                     const index = availableDigits.length - 1 - i;
+                     if (index >= startIndex) maxPossibleSum += availableDigits[index];
+                     else { maxPossibleSum = -Infinity; break; }
+                 }
+                 if (maxPossibleSum < targetSum) return;
+
+
+                const currentDigit = availableDigits[startIndex];
+                currentCombination.push(currentDigit);
+                generate(startIndex + 1, currentSum + currentDigit, currentCombination);
+                currentCombination.pop();
+
+                // Optimization: Check if enough remaining digits before exploring exclusion path
+                if (availableDigits.length - (startIndex + 1) >= numCells - currentCombination.length) {
+                   generate(startIndex + 1, currentSum, currentCombination);
+                }
+            }
+
+            generate(0, 0, []);
+
+            // --- Display Results (Using translated messages) ---
+            if (validCombinations.length === 0) {
+                resultsDiv.innerHTML = translations.resultsNone[currentLanguage];
+            } else {
+                // Use translated 'resultsFound' message with placeholder
+                let resultText = translations.resultsFound[currentLanguage].replace('{count}', validCombinations.length);
+                validCombinations.forEach(combo => {
+                    // Format combination consistently (sorted numbers)
+                    resultText += `[${combo.sort((a, b) => a - b).join(', ')}]\n`;
+                });
+                resultsDiv.innerHTML = resultText;
+            }
+            // Update the stored previous text after displaying results
+             resultsDiv.dataset.previousText = resultsDiv.textContent;
+        }
+
+        // --- Initial Setup ---
+        // Set initial language from browser or default to 'en'
+        // You could add more sophisticated language detection if needed
+        const initialLang = document.getElementById('languageSelector').value || 'en';
+        updateUI(initialLang); // Apply translations on page load
+
+    </script>
+
+</body>
+</html>
